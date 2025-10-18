@@ -4,34 +4,39 @@ export default async function handler(req, res) {
   }
 
   const { question, transcript } = req.body;
+  const apiKey = process.env.OPENAI_API_KEY;
 
-  if (!process.env.OPENAI_API_KEY) {
-    return res.status(500).json({ error: "Missing API key" });
+  if (!apiKey) {
+    return res.status(500).json({ error: "Thiếu OpenAI API key" });
   }
 
   try {
     const systemPrompt = `
-Bạn là giám khảo HSK3. Hãy đọc câu hỏi và câu trả lời (bằng tiếng Trung) rồi phân tích:
-1. Câu trả lời có hợp lý, đúng trọng tâm với câu hỏi không?
-2. Có lỗi ngữ pháp, dùng từ hoặc logic nào không? Giải thích bằng tiếng Việt (có thể thêm tiếng Trung trong ngoặc).
-3. Nếu câu sai, hãy sửa lại câu đó cho đúng; nếu đúng, xác nhận và đưa 2 câu tương tự tự nhiên hơn.
-Trả về kết quả JSON với các trường:
+Bạn là giám khảo HSK3. Phải TRẢ LỜI CHÍNH XÁC THEO CẤU TRÚC JSON sau đây, không thêm chữ thừa ngoài JSON.
+
 {
   "verdict": "đúng" hoặc "sai",
   "reason": "Giải thích ngắn bằng tiếng Việt (có thể kèm tiếng Trung)",
-  "errors": ["danh sách lỗi ngắn, nếu có"],
-  "corrected": "phiên bản sửa đúng (nếu cần)",
-  "suggestions": ["2 câu gợi ý tương tự nếu đúng"]
+  "errors": ["liệt kê lỗi nếu có, nếu không để mảng rỗng"],
+  "corrected": "câu sửa đúng (nếu có)",
+  "suggestions": ["2 câu gợi ý tương tự tự nhiên nếu câu đúng"]
 }
+
+Nhiệm vụ của bạn:
+1. Đọc câu hỏi HSK3 và câu trả lời của học viên (bằng tiếng Trung).
+2. Xác định xem học viên đã trả lời đúng trọng tâm, hợp ngữ pháp, hợp ngữ nghĩa chưa.
+3. Nếu sai → ghi rõ lỗi và sửa lại.
+4. Nếu đúng → xác nhận, rồi gợi ý vài cách nói tương tự tự nhiên hơn.
+5. Trả về đúng định dạng JSON trên, KHÔNG được thêm mô tả bên ngoài JSON.
 `;
 
-    const userPrompt = `Câu hỏi: ${question}\nCâu trả lời: ${transcript}`;
+    const userPrompt = `Câu hỏi: ${question}\nCâu trả lời của học viên: ${transcript}`;
 
     const response = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`,
+        Authorization: `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
         model: "gpt-4o-mini",
@@ -39,8 +44,8 @@ Trả về kết quả JSON với các trường:
           { role: "system", content: systemPrompt },
           { role: "user", content: userPrompt },
         ],
-        temperature: 0.2,
-        max_tokens: 400,
+        temperature: 0.3,
+        max_tokens: 500,
       }),
     });
 
@@ -51,8 +56,22 @@ Trả về kết quả JSON với các trường:
       return res.status(500).json({ error: data.error?.message || "OpenAI API error" });
     }
 
-    const content = data.choices[0].message.content;
-    res.status(200).json({ ok: true, result: content });
+    const raw = data.choices[0].message.content.trim();
+
+    let parsed;
+    try {
+      parsed = JSON.parse(raw);
+    } catch (e) {
+      // Nếu không phải JSON hợp lệ, gói lại để hiển thị dạng fallback
+      parsed = {
+        verdict: "không xác định",
+        reason: "Phản hồi AI không ở dạng JSON hợp lệ.",
+        corrected: "—",
+        suggestions: [raw],
+      };
+    }
+
+    res.status(200).json({ ok: true, parsed, raw });
   } catch (err) {
     console.error("Server error:", err);
     res.status(500).json({ error: "Server error" });
