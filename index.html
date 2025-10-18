@@ -17,38 +17,58 @@
   .incorrect { color: red; }
   ul { margin: 0; padding-left: 25px; }
   small { display: block; color: #374151; margin-left: 8px; }
+  select { margin: 8px 0; padding: 6px 10px; border-radius: 8px; border: 1px solid #ccc; font-size: 15px; }
 </style>
 </head>
 <body>
 <h1>💬 Luyện nói HSK3 cùng AI</h1>
 <div id="app">
+  <label for="questionSelect"><b>Chọn câu hỏi:</b></label>
+  <select id="questionSelect"></select>
   <div id="question">Đang tải câu hỏi...</div>
+  <button id="prevBtn">⬅️ Câu trước</button>
   <button id="speakBtn">🎧 Nghe lại câu hỏi</button>
+  <button id="nextBtn">➡️ Câu tiếp theo</button>
+  <br>
   <button id="recordBtn">🎙️ Bắt đầu ghi âm</button>
   <button id="stopBtn" disabled>⏹️ Dừng ghi</button>
   <button id="analyzeBtn" disabled>🧠 Gửi lên AI chấm</button>
   <br>
   <textarea id="transcript" placeholder="Phần bạn nói sẽ hiện ở đây hoặc bạn có thể nhập trực tiếp..."></textarea>
   <div id="aiResult">Chưa có phản hồi.</div>
-  <button id="nextBtn">➡️ Câu tiếp theo</button>
 </div>
 
 <script>
 let questions = [];
 let idx = 0;
 let recognition;
-let speechSynthesisUtterance;
 
 async function loadQuestions() {
   const res = await fetch("questions.json");
   questions = await res.json();
+
+  const select = document.getElementById("questionSelect");
+  select.innerHTML = "";
+  questions.forEach((q, i) => {
+    const opt = document.createElement("option");
+    opt.value = i;
+    opt.textContent = `${i + 1}. ${q}`;
+    select.appendChild(opt);
+  });
+  select.onchange = () => {
+    idx = Number(select.value);
+    showQuestion();
+  };
+
   showQuestion();
 }
 
 function showQuestion() {
-  document.getElementById("question").textContent = questions[idx] || "Hết câu hỏi rồi!";
+  const q = questions[idx];
+  document.getElementById("question").textContent = q || "Hết câu hỏi rồi!";
   document.getElementById("transcript").value = "";
   document.getElementById("aiResult").textContent = "Chưa có phản hồi.";
+  document.getElementById("questionSelect").value = idx;
   speakQuestion();
 }
 
@@ -62,11 +82,8 @@ function speakQuestion() {
 }
 
 document.getElementById("speakBtn").onclick = speakQuestion;
-
-document.getElementById("nextBtn").onclick = () => {
-  idx = (idx + 1) % questions.length;
-  showQuestion();
-};
+document.getElementById("nextBtn").onclick = () => { idx = (idx + 1) % questions.length; showQuestion(); };
+document.getElementById("prevBtn").onclick = () => { idx = (idx - 1 + questions.length) % questions.length; showQuestion(); };
 
 document.getElementById("recordBtn").onclick = () => {
   if (!("webkitSpeechRecognition" in window)) {
@@ -128,7 +145,6 @@ document.getElementById("analyzeBtn").onclick = async () => {
         html += `<div><b>Câu sửa:</b> ${escapeHtml(p.corrected.sentence || "")}</div>`;
         if (p.corrected.pinyin) html += `<small>Pinyin: ${escapeHtml(p.corrected.pinyin)}</small>`;
         if (p.corrected.vietnamese) html += `<small>Việt: ${escapeHtml(p.corrected.vietnamese)}</small>`;
-        // tự động đọc câu sửa
         if (p.corrected.sentence) {
           const utt = new SpeechSynthesisUtterance(p.corrected.sentence);
           utt.lang = "zh-CN";
@@ -161,7 +177,7 @@ document.getElementById("analyzeBtn").onclick = async () => {
 
     aiResult.innerHTML = html;
   } catch (e) {
-    document.getElementById("aiResult").textContent = "❌ Không thể kết nối tới API: " + e.message;
+    aiResult.textContent = "❌ Không thể kết nối tới API: " + e.message;
   }
 };
 
