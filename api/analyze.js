@@ -12,22 +12,30 @@ export default async function handler(req, res) {
 
   try {
     const systemPrompt = `
-Bạn là giám khảo HSK3. Phải TRẢ LỜI CHÍNH XÁC THEO CẤU TRÚC JSON sau đây, không thêm chữ thừa ngoài JSON.
+Bạn là GIÁO VIÊN HSK3 rất giỏi. 
+Nhiệm vụ của bạn là chấm câu trả lời nói của học viên theo 5 yêu cầu sau và TRẢ LỜI BẰNG JSON hợp lệ:
 
 {
   "verdict": "đúng" hoặc "sai",
-  "reason": "Giải thích ngắn bằng tiếng Việt (có thể kèm tiếng Trung)",
-  "errors": ["liệt kê lỗi nếu có, nếu không để mảng rỗng"],
-  "corrected": "câu sửa đúng (nếu có)",
-  "suggestions": ["2 câu gợi ý tương tự tự nhiên nếu câu đúng"]
+  "reason": "Giải thích ngắn gọn, nếu sai thì nêu lý do sai và cấu trúc ngữ pháp đúng (ví dụ: “động từ + 得” hay “就” phải đặt sau chủ ngữ...)",
+  "errors": ["liệt kê lỗi chính nếu có"],
+  "corrected": {
+     "sentence": "phiên bản sửa đúng",
+     "pinyin": "pinyin của câu sửa",
+     "vietnamese": "nghĩa tiếng Việt ngắn gọn"
+  },
+  "suggestions": [
+     {"sentence": "câu tương tự tự nhiên 1", "pinyin": "...", "vietnamese": "..."},
+     {"sentence": "câu tương tự tự nhiên 2", "pinyin": "...", "vietnamese": "..."}
+  ]
 }
 
-Nhiệm vụ của bạn:
-1. Đọc câu hỏi HSK3 và câu trả lời của học viên (bằng tiếng Trung).
-2. Xác định xem học viên đã trả lời đúng trọng tâm, hợp ngữ pháp, hợp ngữ nghĩa chưa.
-3. Nếu sai → ghi rõ lỗi và sửa lại.
-4. Nếu đúng → xác nhận, rồi gợi ý vài cách nói tương tự tự nhiên hơn.
-5. Trả về đúng định dạng JSON trên, KHÔNG được thêm mô tả bên ngoài JSON.
+Yêu cầu:
+- Giải thích bằng tiếng Việt, nhưng có thể chèn ví dụ tiếng Trung trong ngoặc nếu cần.
+- Luôn thêm Pinyin và nghĩa Việt cho các câu Trung Quốc.
+- Nếu câu trả lời sai, nhấn mạnh phần sai và chỉ ra quy tắc ngữ pháp đúng.
+- Nếu câu đúng, vẫn đưa gợi ý cách nói tự nhiên hơn.
+Trả về CHUẨN JSON, KHÔNG thêm ký tự thừa ngoài JSON.
 `;
 
     const userPrompt = `Câu hỏi: ${question}\nCâu trả lời của học viên: ${transcript}`;
@@ -44,8 +52,8 @@ Nhiệm vụ của bạn:
           { role: "system", content: systemPrompt },
           { role: "user", content: userPrompt },
         ],
-        temperature: 0.3,
-        max_tokens: 500,
+        temperature: 0.4,
+        max_tokens: 700,
       }),
     });
 
@@ -57,17 +65,15 @@ Nhiệm vụ của bạn:
     }
 
     const raw = data.choices[0].message.content.trim();
-
     let parsed;
     try {
       parsed = JSON.parse(raw);
     } catch (e) {
-      // Nếu không phải JSON hợp lệ, gói lại để hiển thị dạng fallback
       parsed = {
         verdict: "không xác định",
-        reason: "Phản hồi AI không ở dạng JSON hợp lệ.",
-        corrected: "—",
-        suggestions: [raw],
+        reason: "Phản hồi không ở dạng JSON hợp lệ.",
+        corrected: { sentence: "—", pinyin: "", vietnamese: "" },
+        suggestions: [{ sentence: raw, pinyin: "", vietnamese: "" }],
       };
     }
 
