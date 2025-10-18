@@ -1,156 +1,174 @@
-<!doctype html>
-<html lang="vi">
+<!DOCTYPE html>
+<html lang="zh">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>HSK3 AI Speaking Practice</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HSK3 Speaking Practice - AI Chấm Nói</title>
 <style>
-body{font-family:system-ui,Arial,Helvetica,sans-serif;margin:0;background:#f9fafb;color:#111827}
-.container{max-width:900px;margin:30px auto;padding:20px;background:white;border-radius:10px;box-shadow:0 4px 20px rgba(0,0,0,0.05)}
-button{padding:8px 14px;border:none;border-radius:8px;background:#2563eb;color:white;font-weight:600;cursor:pointer}
-button.danger{background:#dc2626}
-button.secondary{background:#0ea5a4}
-textarea{width:100%;min-height:120px;border-radius:6px;border:1px solid #d1d5db;padding:8px;font-family:inherit}
-h1{font-size:22px;margin-bottom:6px}
-.small{font-size:13px;color:#4b5563}
-.panel{background:#f1f5f9;padding:12px;border-radius:8px;margin-top:10px}
-.badge{background:#e2e8f0;border-radius:9999px;padding:4px 10px;font-size:13px}
-.footer{font-size:12px;color:#6b7280;margin-top:14px;text-align:center}
+  body { font-family: 'Segoe UI', sans-serif; background: #f8f9fa; margin: 0; padding: 20px; color: #111; }
+  h1 { text-align: center; color: #2563eb; }
+  #app { max-width: 750px; margin: 0 auto; background: #fff; padding: 20px 30px; border-radius: 16px; box-shadow: 0 2px 12px rgba(0,0,0,0.1); }
+  button { margin: 8px; padding: 10px 18px; border: none; border-radius: 10px; background: #2563eb; color: #fff; font-size: 15px; cursor: pointer; transition: 0.3s; }
+  button:hover { background: #1e40af; }
+  #question { font-size: 22px; margin: 15px 0; color: #111; font-weight: 600; }
+  #transcript { width: 100%; height: 80px; font-size: 16px; padding: 10px; border-radius: 10px; border: 1px solid #ccc; }
+  #aiResult { margin-top: 18px; padding: 15px; background: #f3f4f6; border-radius: 10px; white-space: pre-line; }
+  .correct { color: green; }
+  .incorrect { color: red; }
+  ul { margin: 0; padding-left: 25px; }
+  small { display: block; color: #374151; margin-left: 8px; }
 </style>
 </head>
 <body>
-<div class="container">
-  <h1>HSK3 AI Speaking Practice (GPT-4o-mini)</h1>
-  <p class="small">Web luyện nói HSK3 có AI chấm, sửa lỗi và gợi ý câu mẫu. Hỗ trợ Chrome/Edge.</p>
-
-  <div class="panel">
-    <div style="display:flex;align-items:center;justify-content:space-between">
-      <div><span id="badge" class="badge">0/0</span></div>
-      <div style="display:flex;gap:8px">
-        <button id="prev">Prev</button>
-        <button id="play" class="secondary">Play question</button>
-        <button id="next">Next</button>
-      </div>
-    </div>
-
-    <div style="margin-top:12px;font-size:18px" id="question">Đang tải câu hỏi...</div>
-
-    <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">
-      <button id="startRec">Start recording</button>
-      <button id="stopRec" class="danger" style="display:none">Stop</button>
-      <button id="analyzeBtn" class="secondary" style="display:none">Gửi lên AI chấm</button>
-    </div>
-
-    <div class="panel">
-      <div class="small">Bản chép lời (ASR):</div>
-      <textarea id="transcript" readonly placeholder="Sau khi nói xong, câu của bạn sẽ hiển thị ở đây..."></textarea>
-    </div>
-
-    <div class="panel">
-      <div class="small">Phản hồi từ AI:</div>
-      <div id="aiResult">Chưa có phản hồi — hãy thử nói và nhấn “Gửi lên AI chấm”.</div>
-    </div>
-  </div>
-
-  <div class="footer">
-    © Web luyện nói HSK3 | Dùng GPT-4o-mini qua Vercel API | Giọng nói & nhận dạng chạy trên trình duyệt.
-  </div>
+<h1>💬 Luyện nói HSK3 cùng AI</h1>
+<div id="app">
+  <div id="question">Đang tải câu hỏi...</div>
+  <button id="speakBtn">🎧 Nghe lại câu hỏi</button>
+  <button id="recordBtn">🎙️ Bắt đầu ghi âm</button>
+  <button id="stopBtn" disabled>⏹️ Dừng ghi</button>
+  <button id="analyzeBtn" disabled>🧠 Gửi lên AI chấm</button>
+  <br>
+  <textarea id="transcript" placeholder="Phần bạn nói sẽ hiện ở đây hoặc bạn có thể nhập trực tiếp..."></textarea>
+  <div id="aiResult">Chưa có phản hồi.</div>
+  <button id="nextBtn">➡️ Câu tiếp theo</button>
 </div>
 
 <script>
-let questions=[], idx=0;
-const qEl=document.getElementById("question");
-const badge=document.getElementById("badge");
-const transcriptEl=document.getElementById("transcript");
-const aiResult=document.getElementById("aiResult");
-const analyzeBtn=document.getElementById("analyzeBtn");
+let questions = [];
+let idx = 0;
+let recognition;
+let speechSynthesisUtterance;
 
-async function loadQuestions(){
-  try{
-    const res=await fetch("questions.json");
-    questions=await res.json();
-    idx=0;renderQ();
-  }catch(e){
-    qEl.textContent="Không thể tải câu hỏi.";
+async function loadQuestions() {
+  const res = await fetch("questions.json");
+  questions = await res.json();
+  showQuestion();
+}
+
+function showQuestion() {
+  document.getElementById("question").textContent = questions[idx] || "Hết câu hỏi rồi!";
+  document.getElementById("transcript").value = "";
+  document.getElementById("aiResult").textContent = "Chưa có phản hồi.";
+  speakQuestion();
+}
+
+function speakQuestion() {
+  const text = questions[idx];
+  if (!text) return;
+  const utter = new SpeechSynthesisUtterance(text);
+  utter.lang = "zh-CN";
+  utter.rate = 0.9;
+  speechSynthesis.speak(utter);
+}
+
+document.getElementById("speakBtn").onclick = speakQuestion;
+
+document.getElementById("nextBtn").onclick = () => {
+  idx = (idx + 1) % questions.length;
+  showQuestion();
+};
+
+document.getElementById("recordBtn").onclick = () => {
+  if (!("webkitSpeechRecognition" in window)) {
+    alert("Trình duyệt của bạn không hỗ trợ ghi âm trực tiếp.");
+    return;
   }
-}
-function renderQ(){
-  qEl.textContent=questions[idx]||"—";
-  badge.textContent=`${idx+1}/${questions.length}`;
-}
-
-// === Speech synthesis (đọc câu hỏi) ===
-function speakQuestion(){
-  const text=questions[idx];
-  if(!text)return;
-  const synth=window.speechSynthesis;
-  if(!synth)return alert("Trình duyệt không hỗ trợ giọng nói.");
-  synth.cancel();
-  const ut=new SpeechSynthesisUtterance(text);
-  ut.lang="zh-CN";
-  const v=synth.getVoices().find(v=>v.lang.startsWith("zh"));
-  if(v)ut.voice=v;
-  synth.speak(ut);
-}
-
-// === Speech recognition (ghi âm + chép lời) ===
-let recognition=null;
-function setupRec(){
-  const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
-  if(!SR){alert("Trình duyệt không hỗ trợ ghi âm (SpeechRecognition).");return null;}
-  const r=new SR();
-  r.lang="zh-CN";
-  r.interimResults=false;
-  r.maxAlternatives=3;
-  r.onresult=(ev)=>{
-    const text=Array.from(ev.results).map(r=>r[0].transcript).join(" ");
-    transcriptEl.value=text;
-    analyzeBtn.style.display="inline-block";
-  };
-  r.onerror=(e)=>{aiResult.textContent="Lỗi ghi âm: "+e.error;};
-  r.onend=()=>{document.getElementById("startRec").style.display="inline-block";
-               document.getElementById("stopRec").style.display="none";};
-  recognition=r;return r;
-}
-document.getElementById("startRec").onclick=()=>{
-  if(!recognition)setupRec();
-  if(!recognition)return;
-  transcriptEl.value="";aiResult.textContent="Đang ghi âm...";
+  recognition = new webkitSpeechRecognition();
+  recognition.lang = "zh-CN";
+  recognition.continuous = false;
+  recognition.interimResults = false;
   recognition.start();
-  document.getElementById("startRec").style.display="none";
-  document.getElementById("stopRec").style.display="inline-block";
-};
-document.getElementById("stopRec").onclick=()=>{
-  if(recognition)recognition.stop();
+  document.getElementById("recordBtn").disabled = true;
+  document.getElementById("stopBtn").disabled = false;
+  document.getElementById("aiResult").textContent = "🎙️ Đang ghi âm...";
+  recognition.onresult = (event) => {
+    document.getElementById("transcript").value = event.results[0][0].transcript;
+    document.getElementById("aiResult").textContent = "✅ Đã ghi lại, sẵn sàng gửi lên AI.";
+    document.getElementById("analyzeBtn").disabled = false;
+  };
 };
 
-// === Nút điều hướng ===
-document.getElementById("prev").onclick=()=>{idx=Math.max(0,idx-1);renderQ();};
-document.getElementById("next").onclick=()=>{idx=Math.min(questions.length-1,idx+1);renderQ();};
-document.getElementById("play").onclick=speakQuestion;
+document.getElementById("stopBtn").onclick = () => {
+  if (recognition) recognition.stop();
+  document.getElementById("recordBtn").disabled = false;
+  document.getElementById("stopBtn").disabled = true;
+};
 
-// === Gửi lên backend AI ===
-analyzeBtn.onclick=async ()=>{
-  const question=questions[idx];
-  const transcript=transcriptEl.value.trim();
-  if(!transcript){aiResult.textContent="Chưa có bản ghi.";return;}
-  aiResult.textContent="⏳ Đang gửi lên AI (GPT-4o-mini)...";
-  try{
-    const res=await fetch("/api/analyze",{method:"POST",headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({question,transcript})});
-    const j=await res.json();
-    if(!j.ok){aiResult.textContent="Lỗi server: "+(j.error||"");return;}
-    const p=j.parsed||{};
-    aiResult.innerHTML=`
-      <div><b>Đánh giá:</b> ${p.verdict||"Không rõ"}</div>
-      <div><b>Giải thích:</b> ${p.reason||"(Không có)"}</div>
-      <div><b>Lỗi:</b> ${(p.errors&&p.errors.length)?p.errors.join("；"):"Không"}</div>
-      <div><b>Câu sửa:</b> ${p.corrected||"(Không cần sửa)"}</div>
-      <div><b>Gợi ý khác:</b> ${(p.suggestions&&p.suggestions.length)?p.suggestions.join("；"):"—"}</div>`;
-  }catch(e){
-    aiResult.textContent="❌ Không thể kết nối tới API: "+e.message;
+document.getElementById("analyzeBtn").onclick = async () => {
+  const question = questions[idx];
+  const transcript = document.getElementById("transcript").value.trim();
+  const aiResult = document.getElementById("aiResult");
+  if (!transcript) { aiResult.textContent = "Chưa có bản ghi."; return; }
+
+  aiResult.textContent = "⏳ Đang gửi lên AI (GPT-4o-mini)...";
+  try {
+    const res = await fetch("/api/analyze", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ question, transcript })
+    });
+    const j = await res.json();
+    if (!j.ok) {
+      aiResult.textContent = "Lỗi server: " + (j.error || JSON.stringify(j));
+      return;
+    }
+
+    const p = j.parsed || {};
+    let html = `<div><b>Đánh giá:</b> <span class="${p.verdict==='đúng'?'correct':'incorrect'}">${p.verdict || "Không rõ"}</span></div>`;
+    html += `<div><b>Giải thích:</b> ${p.reason || "(Không có)"}</div>`;
+
+    if (p.errors && Array.isArray(p.errors) && p.errors.length) {
+      html += `<div><b>Lỗi:</b> ${p.errors.map(e => escapeHtml(e)).join("；")}</div>`;
+    } else {
+      html += `<div><b>Lỗi:</b> Không</div>`;
+    }
+
+    if (p.corrected) {
+      if (typeof p.corrected === "object") {
+        html += `<div><b>Câu sửa:</b> ${escapeHtml(p.corrected.sentence || "")}</div>`;
+        if (p.corrected.pinyin) html += `<small>Pinyin: ${escapeHtml(p.corrected.pinyin)}</small>`;
+        if (p.corrected.vietnamese) html += `<small>Việt: ${escapeHtml(p.corrected.vietnamese)}</small>`;
+        // tự động đọc câu sửa
+        if (p.corrected.sentence) {
+          const utt = new SpeechSynthesisUtterance(p.corrected.sentence);
+          utt.lang = "zh-CN";
+          utt.rate = 0.9;
+          speechSynthesis.speak(utt);
+        }
+      } else {
+        html += `<div><b>Câu sửa:</b> ${escapeHtml(p.corrected)}</div>`;
+      }
+    } else {
+      html += `<div><b>Câu sửa:</b> (Không cần sửa)</div>`;
+    }
+
+    if (p.suggestions && Array.isArray(p.suggestions) && p.suggestions.length) {
+      html += `<div><b>Gợi ý khác:</b></div><ul>`;
+      for (const s of p.suggestions) {
+        if (typeof s === "object") {
+          html += `<li>${escapeHtml(s.sentence || "")}`;
+          if (s.pinyin) html += `<small>Pinyin: ${escapeHtml(s.pinyin)}</small>`;
+          if (s.vietnamese) html += `<small>Việt: ${escapeHtml(s.vietnamese)}</small>`;
+          html += `</li>`;
+        } else {
+          html += `<li>${escapeHtml(s)}</li>`;
+        }
+      }
+      html += `</ul>`;
+    } else {
+      html += `<div><b>Gợi ý khác:</b> —</div>`;
+    }
+
+    aiResult.innerHTML = html;
+  } catch (e) {
+    document.getElementById("aiResult").textContent = "❌ Không thể kết nối tới API: " + e.message;
   }
 };
+
+function escapeHtml(str) {
+  if (!str && str !== "") return "";
+  return String(str).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+}
 
 loadQuestions();
 </script>
