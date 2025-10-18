@@ -42,6 +42,7 @@
 let questions = [];
 let idx = 0;
 let recognition;
+let isRecording = false;
 
 async function loadQuestions() {
   const res = await fetch("questions.json");
@@ -85,32 +86,75 @@ document.getElementById("speakBtn").onclick = speakQuestion;
 document.getElementById("nextBtn").onclick = () => { idx = (idx + 1) % questions.length; showQuestion(); };
 document.getElementById("prevBtn").onclick = () => { idx = (idx - 1 + questions.length) % questions.length; showQuestion(); };
 
+// --- Ghi âm mượt, không đè, không cần chờ ---
 document.getElementById("recordBtn").onclick = () => {
+  const recordBtn = document.getElementById("recordBtn");
+  const stopBtn = document.getElementById("stopBtn");
+  const aiResult = document.getElementById("aiResult");
+  const transcriptEl = document.getElementById("transcript");
+
   if (!("webkitSpeechRecognition" in window)) {
     alert("Trình duyệt của bạn không hỗ trợ ghi âm trực tiếp.");
     return;
   }
+
+  if (isRecording) {
+    aiResult.textContent = "⚠️ Đang ghi âm rồi. Hãy dừng trước khi bắt đầu mới.";
+    return;
+  }
+
   recognition = new webkitSpeechRecognition();
   recognition.lang = "zh-CN";
   recognition.continuous = false;
   recognition.interimResults = false;
-  recognition.start();
-  document.getElementById("recordBtn").disabled = true;
-  document.getElementById("stopBtn").disabled = false;
-  document.getElementById("aiResult").textContent = "🎙️ Đang ghi âm...";
+
+  recognition.onstart = () => {
+    isRecording = true;
+    aiResult.textContent = "🎙️ Đang ghi âm... (nói bằng tiếng Trung)";
+    recordBtn.disabled = true;
+    stopBtn.disabled = false;
+  };
+
   recognition.onresult = (event) => {
-    document.getElementById("transcript").value = event.results[0][0].transcript;
-    document.getElementById("aiResult").textContent = "✅ Đã ghi lại, sẵn sàng gửi lên AI.";
+    const result = event.results[0][0].transcript.trim();
+    if (transcriptEl.value.trim()) {
+      transcriptEl.value += " " + result;
+    } else {
+      transcriptEl.value = result;
+    }
+    aiResult.textContent = "✅ Đã ghi lại (" + transcriptEl.value + ")";
     document.getElementById("analyzeBtn").disabled = false;
   };
+
+  recognition.onerror = (event) => {
+    console.error("Recognition error:", event);
+    aiResult.textContent = "⚠️ Lỗi khi ghi âm: " + (event.error || "Không xác định");
+    isRecording = false;
+    recordBtn.disabled = false;
+    stopBtn.disabled = true;
+  };
+
+  recognition.onend = () => {
+    isRecording = false;
+    recordBtn.disabled = false;
+    stopBtn.disabled = true;
+    aiResult.textContent += "\n🎧 Ghi âm kết thúc, bạn có thể ghi tiếp hoặc gửi lên AI.";
+  };
+
+  recognition.start();
 };
 
 document.getElementById("stopBtn").onclick = () => {
-  if (recognition) recognition.stop();
-  document.getElementById("recordBtn").disabled = false;
-  document.getElementById("stopBtn").disabled = true;
+  if (recognition && isRecording) {
+    recognition.stop();
+    isRecording = false;
+    document.getElementById("aiResult").textContent = "⏹️ Đã dừng ghi âm.";
+    document.getElementById("recordBtn").disabled = false;
+    document.getElementById("stopBtn").disabled = true;
+  }
 };
 
+// --- Gửi AI chấm ---
 document.getElementById("analyzeBtn").onclick = async () => {
   const question = questions[idx];
   const transcript = document.getElementById("transcript").value.trim();
